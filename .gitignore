@@ -1,0 +1,5 @@
+*.bin
+testdata/
+*.local.*
+bin/
+
