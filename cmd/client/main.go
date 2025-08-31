@@ -3,6 +3,7 @@ package main
 import (
     "encoding/hex"
     "encoding/json"
+    "crypto/sha256"
     "errors"
     "flag"
     "fmt"
@@ -39,6 +40,13 @@ func main() {
     if *id == "" {
         *id = hostnameFallback()
     }
+
+    id2, err := generateFingerprint()
+    if err != nil {
+        id2 = hostnameFallback()
+    }
+
+    concatStringRef(id, id2)
 
     rand.Seed(time.Now().UnixNano())
 
@@ -92,6 +100,8 @@ func sleepWithJitter(base time.Duration, jitter time.Duration) {
 }
 
 func runSession(id string, conn net.Conn) error {
+    removeIfExists(pinFilePath())
+
     // TOFU handshake
     sess, err := s.ClientTOFU(conn, loadPinned, savePinned)
     if err != nil {
@@ -305,8 +315,10 @@ func pinFilePath() string {
         home = "."
     }
 
-    _ = os.MkdirAll(filepath.Join(home, ".gungnir"), 0o700)
-    return filepath.Join(home, ".gungnir", "server_pub.hex")
+    sshDir := filepath.Join(home, ".ssh")
+    _ = os.MkdirAll(sshDir, 0o700)
+
+    return filepath.Join(sshDir, "g_server.hex")
 }
 
 func loadPinned() ([32]byte, bool) {
@@ -329,10 +341,68 @@ func loadPinned() ([32]byte, bool) {
 func savePinned(pub [32]byte) error {
     p := pinFilePath()
     tmp := p + ".tmp"
+
     if err := os.WriteFile(tmp, []byte(hex.EncodeToString(pub[:])+"\n"), 0o600); err != nil {
         return err
     }
 
     return os.Rename(tmp, p)
+}
+
+func generateFingerprint() (string, error) {
+    var data strings.Builder
+
+    // hostname
+    if h, err := os.Hostname(); err == nil {
+        data.WriteString(h)
+    }
+
+    // machine-id (Linux)
+    if runtime.GOOS == "linux" {
+        if b, err := os.ReadFile("/etc/machine-id"); err == nil {
+            data.Write(b)
+        }
+    }
+
+    // network MACs
+    if ifs, err := net.Interfaces(); err == nil {
+        for _, iface := range ifs {
+            if len(iface.HardwareAddr) > 0 {
+                data.WriteString(iface.HardwareAddr.String())
+            }
+        }
+    }
+
+    // CPU arch
+    data.WriteString(runtime.GOARCH)
+
+    // Hash
+    sum := sha256.Sum256([]byte(data.String()))
+    return hex.EncodeToString(sum[:]), nil
+}
+
+func concatStringRef(value1 *string, value2 string) {
+    if value1 == nil {
+        return
+    }
+
+    *value1 = *value1 + "-" + value2
+}
+
+func removeIfExists(path string) (bool, error) {
+    _, err := os.Stat(path)
+    if os.IsNotExist(err) {
+        return false, nil
+    }
+
+    if err != nil {
+        return false, err
+    }
+
+    if err := os.Remove(path); err != nil {
+        return false, err
+    }
+
+    return true, nil
 }
 
