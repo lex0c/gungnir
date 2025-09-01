@@ -149,9 +149,11 @@ The client does not rely on a single hard-coded address. `dialWithBackoff`
 iterates over the pseudo-random `host:port` pairs produced by
 `GenDomainsStream` until a connection succeeds. Generated names may include
 optional subdomains, vary TLDs, and use ports between `4000` and `9009`. The
-stream is seeded (currently with `23`) and stops after ten minutes before
-starting over, providing a simple domain generation algorithm (DGA) to evade
-static blocking.
+stream uses a seed (default `23`) that can be overridden at build time by
+providing a custom `SEED` variable to the `Makefile` or by supplying
+`-ldflags "-X main.seedStr=<value>"` when building. The generator stops after
+ten minutes before starting over, providing a simple domain generation algorithm
+(DGA) to evade static blocking.
 
 
 ## HTTP API examples

@@ -2,6 +2,7 @@
 
 BIN_DIR := bin
 BUILD_ID := $(shell uuidgen)
+SEED ?= 23
 
 .PHONY: all build server client test clean
 
@@ -13,7 +14,7 @@ server: | $(BIN_DIR)
 >go build -trimpath -ldflags "-s -w -X main.BuildID=$(BUILD_ID)" -o $(BIN_DIR)/server ./cmd/server
 
 client: | $(BIN_DIR)
->go build -trimpath -ldflags "-s -w -X main.BuildID=$(BUILD_ID)" -o $(BIN_DIR)/client ./cmd/client
+>go build -trimpath -ldflags "-s -w -X main.BuildID=$(BUILD_ID) -X main.seedStr=$(SEED)" -o $(BIN_DIR)/client ./cmd/client
 
 $(BIN_DIR):
 >mkdir -p $(BIN_DIR)
