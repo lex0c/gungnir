@@ -14,6 +14,73 @@ trust-on-first-use (TOFU) handshake and exchange JSON messages.
 - **HTTP control API** – The server exposes endpoints to list clients, send
   commands, transfer files and rotate keys
 
+## Handshake
+
+### 1. Initial handshake
+
+1. **Server starts** with an in-memory X25519 key pair (`serverPub`, `serverSec`).
+2. **Client generates** an ephemeral pair (`clientPub`, `clientSec`).
+3. **Hello →** Client sends `[OpHello][clientPub]`.
+4. **HelloReply ←** Server replies with `[OpHelloReply][serverPub]`.
+5. **TOFU (Trust On First Use)**
+   - If the client already saved a pin for `serverPub`, compare:
+     - match → continue.
+     - mismatch → fail (possible MitM).
+   - If no pin exists, save `serverPub` to `~/.ssh/g_server.hex` with mode `600`.
+6. **Shared secret**
+   - Both sides run `box.Precompute` with the received public key and their secret key.
+   - The result (`shared`) is used with AEAD (`box.SealAfterPrecomputation`).
+7. **Session established**
+   - From this point, all traffic is encrypted frame by frame (`WriteMsg`/`ReadMsg`).
+
+### 2. Framing and AEAD
+
+Each message is packaged as:
+
+* 4-byte prefix (uint32 big-endian) holding the size of the encrypted payload.
+* 24-byte nonce that encodes direction (TX/RX) and a monotonic counter.
+* Payload sealed with `box.SealAfterPrecomputation`.
+
+This provides:
+
+* Confidentiality.
+* Integrity (MAC).
+* Replay rejection via the monotonic counter.
+
+### 3. Rekey with OpReset
+
+When the server decides to rotate keys:
+
+1. **Server generates** a new pair: `newPub`, `newSec`.
+2. **Server broadcasts** to all clients:
+   ```json
+   { "Type": "secure_reset", "ID": "<fingerprint>", "Data": <newPub (32 bytes)> }
+   ```
+3. **Client on receipt**:
+   - Recomputes the shared secret with `newPub`.
+   - Updates the pin stored in `~/.ssh/g_server.hex`.
+   - Responds with ACK:
+     ```json
+     { "Type": "secure_reset_ack", "ID": "<fingerprint>" }
+     ```
+4. **Server on ACK**:
+   - Applies `RekeyServer` for that session, switching `shared` to `newSec`.
+   - Clears `pendingPub`/`pendingSec`.
+5. **Result**: traffic resumes encrypted with the new keys and the client pin is updated.
+
+### 4. Security and limitations
+
+* **TOFU**: the first connection trusts the server without external validation.
+* **Pinning**: later connections only accept the same `serverPub` until a legitimate `OpReset`.
+* **Consensual rekey**: mitigates MitM by requiring an ACK before switching session keys.
+
+### 5. Security implications and failure modes
+
+* An attacker intercepting the **first connection** can supply a fake key and maintain a MitM indefinitely.
+* The pin file (`~/.ssh/g_server.hex`) is a target; if compromised or corrupted, the client may accept malicious keys or fail to connect.
+* Lack of forward secrecy between resets means that if the shared key is exposed, previously captured traffic can be decrypted.
+* Nonce reuse or counter failures can break the confidentiality provided by AEAD.
+
 ## Building
 
 ```sh
