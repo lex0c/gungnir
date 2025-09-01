@@ -35,17 +35,46 @@ trust-on-first-use (TOFU) handshake and exchange JSON messages.
 
 ### 2. Framing and AEAD
 
-Each message is packaged as:
+Each message in the session is wrapped in an “envelope” with three parts:
 
-* 4-byte prefix (uint32 big-endian) holding the size of the encrypted payload.
-* 24-byte nonce that encodes direction (TX/RX) and a monotonic counter.
-* Payload sealed with `box.SealAfterPrecomputation`.
+1. **4-byte prefix**
+
+   * A `uint32` integer in big-endian order.
+   * Holds the size of the **already encrypted** payload.
+   * Allows the receiver to know exactly how many bytes to read from the socket before calling the decryptor.
+
+2. **24-byte nonce**
+
+   * Not secret, sent along with the frame.
+   * Encodes two things:
+
+     * **Direction**: whether it came from client → server or server → client (a fixed bit or byte).
+     * **Monotonic counter**: incremented for each message sent in that direction.
+   * Ensures uniqueness: the same nonce must never be reused within a session.
+
+3. **Encrypted payload**
+
+   * The original data (JSON, command, file, etc.) encrypted with `box.SealAfterPrecomputation`.
+   * This call uses the *shared key* derived during the handshake and the frame’s nonce.
+   * Produces `ciphertext + MAC`.
 
 This provides:
 
-* Confidentiality.
-* Integrity (MAC).
-* Replay rejection via the monotonic counter.
+- **Confidentiality**
+
+   * Without the shared secret key, the encrypted payload is pure gibberish.
+   * Even if an attacker captures the packets, they can’t read the contents.
+
+- **Integrity (MAC)**
+
+   * `SealAfterPrecomputation` includes a message authenticator.
+   * If the payload is tampered with, verification fails and the frame is rejected.
+
+- **Replay protection**
+
+   * The monotonic counter ensures each nonce is unique.
+   * If someone tries to resend a previously seen frame, the repeated nonce gives it away.
+   * You can immediately discard packets with counters lower than or equal to the last accepted.
 
 ### 3. Rekey with OpReset
 
