@@ -103,7 +103,7 @@ When the server decides to rotate keys:
 * The pin file (`~/.ssh/g_server.hex`) is a target; if compromised or corrupted, the client may accept malicious keys or fail to connect.
 * Lack of forward secrecy between resets means that if the shared key is exposed, previously captured traffic can be decrypted.
 * Nonce reuse or counter failures can break the confidentiality provided by AEAD.
-* Clients blindly trust any reachable server; without authentication or authorization, a malicious operator with a registered domain could take control of clients.
+* Clients blindly trust any reachable server. Each build injects a random BuildID into the server and client binaries, and the client only proceeds if the server presents the same ID. This prevents accidental mismatches, yet if an attacker alters the BuildID embedded in the client it can still be hijacked by a rogue server.
 
 ## Building
 
