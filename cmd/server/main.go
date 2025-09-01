@@ -230,7 +230,7 @@ func handleConn(h *Hub, conn net.Conn, serverPub, serverSec [32]byte) {
         }
 
         switch msg.Type {
-        case "file_ack", "cmd_result", "file":
+        case "file_ack", "cmd_result", "file", "pong":
             h.fulfill(&msg)
         case "secure_reset_ack":
             // apply rekey in this session using the pending pair
@@ -264,6 +264,104 @@ func tcpListen(h *Hub, addr string) {
 }
 
 // ========== HTTP API ==========
+
+type pingReq struct {
+    ClientID string `json:"client_id"` // empty means broadcast
+    TimeoutS int    `json:"timeout_s"` // optional, default 60
+}
+
+type pingResult struct {
+    ClientID string `json:"client_id"`
+    OK       bool   `json:"ok"`
+    Error    string `json:"error,omitempty"`
+}
+
+func handlePing(h *Hub) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        defer r.Body.Close()
+
+        var req pingReq
+        if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+            http.Error(w, "invalid json", 400)
+            return
+        }
+
+        if req.TimeoutS <= 0 {
+            req.TimeoutS = 60
+        }
+
+        deadline := time.After(time.Duration(req.TimeoutS) * time.Second)
+
+        if req.ClientID != "" {
+            id := p.NewID()
+            ch := h.registerPending(id)
+            if err := h.sendTo(req.ClientID, &p.Message{ID: id, Type: "ping"}); err != nil {
+                http.Error(w, err.Error(), 404)
+                return
+            }
+
+            select {
+            case <-ch:
+                writeJSON(w, pingResult{ClientID: req.ClientID, OK: true})
+            case <-deadline:
+                http.Error(w, "timeout waiting for pong", 504)
+            }
+
+            return
+        }
+
+        h.mu.RLock()
+        targets := make([]string, 0, len(h.clients))
+        for id := range h.clients {
+            targets = append(targets, id)
+        }
+        h.mu.RUnlock()
+
+        if len(targets) == 0 {
+            writeJSON(w, []pingResult{})
+            return
+        }
+
+        type waitItem struct {
+            id string
+            ch chan *p.Message
+        }
+
+        waiters := make(map[string]waitItem, len(targets))
+        for _, cid := range targets {
+            id := p.NewID()
+            ch := h.registerPending(id)
+            _ = h.sendTo(cid, &p.Message{ID: id, Type: "ping"})
+            waiters[cid] = waitItem{id: id, ch: ch}
+        }
+
+        out := make([]pingResult, 0, len(targets))
+        timeout := time.NewTimer(time.Duration(req.TimeoutS) * time.Second)
+        defer timeout.Stop()
+
+        var wg sync.WaitGroup
+        var mu sync.Mutex
+        for cid, wi := range waiters {
+            wg.Add(1)
+            go func(cid string, wi waitItem) {
+                defer wg.Done()
+                select {
+                case <-wi.ch:
+                    mu.Lock()
+                    out = append(out, pingResult{ClientID: cid, OK: true})
+                    mu.Unlock()
+                case <-timeout.C:
+                    mu.Lock()
+                    out = append(out, pingResult{ClientID: cid, OK: false, Error: "timeout"})
+                    mu.Unlock()
+                }
+            }(cid, wi)
+        }
+
+        wg.Wait()
+        writeJSON(w, out)
+    }
+}
 
 type sendCmdReq struct {
     ClientID string `json:"client_id"` // empty means broadcast
@@ -806,6 +904,7 @@ func main() {
 
     mux := http.NewServeMux()
     mux.HandleFunc("GET /clients", handleListClients(hub))
+    mux.HandleFunc("POST /ping", handlePing(hub))
     mux.HandleFunc("POST /send-cmd", handleSendCmd(hub))
     mux.HandleFunc("POST /send-file", handleSendFile(hub, 256<<20))
     mux.HandleFunc("POST /pull-file", handlePullFile(hub))
