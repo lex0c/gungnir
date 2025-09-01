@@ -171,6 +171,14 @@ curl -X POST http://localhost:8080/send-cmd \
   -H 'Content-Type: application/json' \
   -d '{"client_id":"<id>","command":"whoami"}'
 ```
+Ping a specific client:
+
+```sh
+curl -X POST http://localhost:8080/ping \
+  -H 'Content-Type: application/json' \
+  -d '{"client_id":"<id>"}'
+```
+
 
 Broadcast a command to all clients:
 
@@ -179,6 +187,14 @@ curl -X POST http://localhost:8080/send-cmd \
   -H 'Content-Type: application/json' \
   -d '{"command":"uptime"}'
 ```
+Broadcast a ping to all clients:
+
+```sh
+curl -X POST http://localhost:8080/ping \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
 
 Push a file to a client:
 

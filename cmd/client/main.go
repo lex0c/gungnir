@@ -178,6 +178,8 @@ func runSession(id string, conn net.Conn) error {
             go c.handlePullFile(&msg)
         case "cmd":
             go c.handleCmd(&msg)
+        case "ping":
+            c.send <- &p.Message{ID: msg.ID, Type: "pong"}
         default:
             log.Printf("unknown msg type: %s", msg.Type)
         }
