@@ -20,6 +20,7 @@ import (
     "golang.org/x/crypto/nacl/box"
 
     p "gungnir/internal/proto"
+    u "gungnir/internal/utils"
     s "gungnir/internal/secure"
 )
 
@@ -1015,6 +1016,7 @@ func getenv(k, def string) string {
 
 func main() {
     log.Printf("Build ID: %s", BuildID)
+    log.Printf("Project: %s", u.Xor("\x99\x8b\x90\x99\x90\x97\x8c"))
 
     addrTCP := getenv("SOCK_ADDR", ":9000")
     addrHTTP := getenv("HTTP_ADDR", ":8080")
