@@ -143,7 +143,7 @@ combined identifier. Optionally supply a custom id:
 ./bin/client -id my-client
 ```
 
-#### Connection strategy and GenDomains
+#### Connection strategy
 
 The client does not rely on a single hard-coded address. `dialWithBackoff`
 iterates over the pseudo-random `host:port` pairs produced by
