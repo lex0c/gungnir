@@ -54,7 +54,7 @@ When the server decides to rotate keys:
 1. **Server generates** a new pair: `newPub`, `newSec`.
 2. **Server broadcasts** to all clients:
    ```json
-   { "Type": "secure_reset", "ID": "<uuid>", "Data": <newPub (32 bytes)> }
+   { "Type": "secure_reset", "ID": "<fingerprint>", "Data": <newPub (32 bytes)> }
    ```
 3. **Client on receipt**:
    - Recomputes the shared secret with `newPub`.
