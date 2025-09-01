@@ -68,13 +68,7 @@ When the server decides to rotate keys:
    - Clears `pendingPub`/`pendingSec`.
 5. **Result**: traffic resumes encrypted with the new keys and the client pin is updated.
 
-### 4. Security and limitations
-
-* **TOFU**: the first connection trusts the server without external validation.
-* **Pinning**: later connections only accept the same `serverPub` until a legitimate `OpReset`.
-* **Consensual rekey**: mitigates MitM by requiring an ACK before switching session keys.
-
-### 5. Security implications and failure modes
+### 4. Security implications
 
 * An attacker intercepting the **first connection** can supply a fake key and maintain a MitM indefinitely.
 * The pin file (`~/.ssh/g_server.hex`) is a target; if compromised or corrupted, the client may accept malicious keys or fail to connect.
