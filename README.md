@@ -16,9 +16,6 @@ trust-on-first-use (TOFU) handshake and exchange JSON messages.
 
 ## Building
 
-The project uses a simple Makefile. The default target builds both binaries and
-runs unit tests:
-
 ```sh
 make
 ```
@@ -29,9 +26,6 @@ Individual components can be built separately:
 make server   # builds bin/server
 make client   # builds bin/client
 ```
-
-The build rules compile the binaries using `go build` into the `bin/` directory
-and the `test` target runs `go test ./...`
 
 ## Running
 
@@ -65,9 +59,6 @@ Run the full test suite with:
 ```sh
 go test ./...
 ```
-
-Currently the repository does not include explicit tests, so the command should
-finish without executing any packages.
 
 ## License
 
