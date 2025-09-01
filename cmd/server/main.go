@@ -189,6 +189,14 @@ func handleConn(h *Hub, conn net.Conn, serverPub, serverSec [32]byte) {
         }
     }()
 
+    // send build id
+    hello := &p.Message{Type: "build_id", BuildID: BuildID}
+    hb, _ := json.Marshal(hello)
+    if err := c.sess.WriteMsg(hb); err != nil {
+        log.Printf("failed to send build id: %v", err)
+        return
+    }
+
     // first frame must be register
     b, err := c.sess.ReadMsg()
     if err != nil {
