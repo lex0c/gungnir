@@ -179,6 +179,22 @@ curl -X POST http://localhost:8080/ping \
   -d '{"client_id":"<id>"}'
 ```
 
+Request basic info from a specific client:
+
+```sh
+curl -X POST http://localhost:8080/info \
+  -H 'Content-Type: application/json' \
+  -d '{"client_id":"<id>"}'
+```
+
+Request info from all clients:
+
+```sh
+curl -X POST http://localhost:8080/info \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
 
 Broadcast a command to all clients:
 

