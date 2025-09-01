@@ -1,3 +1,6 @@
+> **Warning**
+> This project is for educational and defensive research purposes only. The code contains intentional limitations and vulnerabilities and is not intended for production use.
+
 # Gungnir
 
 Gungnir is a minimal remote command and control system written in Go. A central
