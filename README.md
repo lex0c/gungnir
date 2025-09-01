@@ -211,6 +211,15 @@ Run the full test suite with:
 go test ./...
 ```
 
+## Disclaimer and Legal Implications
+
+Gungnir is provided for educational and defensive research purposes only. Use of
+this software to access or control systems without explicit authorization may
+violate local, state, and federal laws. The authors and contributors assume no
+liability for misuse or damages resulting from the use of this project. Always
+obtain proper consent before deploying Gungnir and ensure compliance with all
+applicable regulations.
+
 ## License
 
 This project is licensed under the terms of the MIT License. See [LICENSE](LICENSE).
