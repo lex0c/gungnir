@@ -113,6 +113,57 @@ combined identifier. Optionally supply a custom id:
 ./bin/client -id my-client
 ```
 
+
+## HTTP API examples
+
+Interact with the server's HTTP API using `curl`.
+
+List connected clients:
+
+```sh
+curl http://localhost:8080/clients
+```
+
+Send a command to a specific client:
+
+```sh
+curl -X POST http://localhost:8080/send-cmd \
+  -H 'Content-Type: application/json' \
+  -d '{"client_id":"<id>","command":"whoami"}'
+```
+
+Broadcast a command to all clients:
+
+```sh
+curl -X POST http://localhost:8080/send-cmd \
+  -H 'Content-Type: application/json' \
+  -d '{"command":"uptime"}'
+```
+
+Send a file to a client:
+
+```sh
+curl -X POST http://localhost:8080/send-file \
+  -F client_id=<id> \
+  -F path=/tmp/hello.txt \
+  -F file=@hello.txt
+```
+
+Pull a file from a client:
+
+```sh
+curl -X POST http://localhost:8080/pull-file \
+  -H 'Content-Type: application/json' \
+  -d '{"client_id":"<id>","src_path":"/etc/hosts","dst_path":"hosts-copy"}'
+```
+
+Rotate keys for all clients:
+
+```sh
+curl -X POST http://localhost:8080/rotate-keys
+```
+
+
 ## Testing
 
 Run the full test suite with:
