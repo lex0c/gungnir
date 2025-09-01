@@ -23,6 +23,9 @@ import (
     s "gungnir/internal/secure"
 )
 
+var BuildID string
+var _ = BuildID
+
 type Client struct {
     id   string
     conn net.Conn
@@ -1011,6 +1014,8 @@ func getenv(k, def string) string {
 }
 
 func main() {
+    log.Printf("Build ID: %s", BuildID)
+
     addrTCP := getenv("SOCK_ADDR", ":9000")
     addrHTTP := getenv("HTTP_ADDR", ":8080")
 

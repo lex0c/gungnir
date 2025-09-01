@@ -25,6 +25,9 @@ import (
     s "gungnir/internal/secure"
 )
 
+var BuildID string
+var _ = BuildID
+
 const blackhole = "If you feel you are in a black hole, don’t give up. There’s a way out."
 
 type Client struct {
