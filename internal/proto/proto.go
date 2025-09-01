@@ -15,8 +15,10 @@ import (
 
 type Message struct {
     ID       string `json:"id"`
-    Type     string `json:"type"` // register, file, file_ack, cmd, cmd_result, pull_file, ping, pong, info, info_result
+    Type     string `json:"type"` // register, build_id, file, file_ack, cmd, cmd_result, pull_file, ping, pong, info, info_result
     ClientID string `json:"client_id,omitempty"`
+
+    BuildID string `json:"build_id,omitempty"`
 
     // file
     FilePath string `json:"file_path,omitempty"`

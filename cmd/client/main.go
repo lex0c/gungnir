@@ -113,6 +113,23 @@ func runSession(id string, conn net.Conn) error {
         return fmt.Errorf("TOFU handshake fail: %w", err)
     }
 
+    // read server build id
+    b, err := sess.ReadMsg()
+    if err != nil {
+        return fmt.Errorf("read build id: %w", err)
+    }
+
+    var hello p.Message
+    if err := json.Unmarshal(b, &hello); err != nil {
+        return fmt.Errorf("decode build id: %w", err)
+    }
+    if hello.Type != "build_id" {
+        return fmt.Errorf("unexpected first message type: %s", hello.Type)
+    }
+    if hello.BuildID != BuildID {
+        return fmt.Errorf("build id mismatch: server=%s client=%s", hello.BuildID, BuildID)
+    }
+
     c := &Client{
         id:   id,
         conn: conn,
