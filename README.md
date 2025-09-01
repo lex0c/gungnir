@@ -103,6 +103,7 @@ When the server decides to rotate keys:
 * The pin file (`~/.ssh/g_server.hex`) is a target; if compromised or corrupted, the client may accept malicious keys or fail to connect.
 * Lack of forward secrecy between resets means that if the shared key is exposed, previously captured traffic can be decrypted.
 * Nonce reuse or counter failures can break the confidentiality provided by AEAD.
+* Clients blindly trust any reachable server; without authentication or authorization, a malicious operator with a registered domain could take control of clients.
 
 ## Building
 
@@ -210,6 +211,10 @@ Run the full test suite with:
 ```sh
 go test ./...
 ```
+
+## Scalability
+
+To scale the server horizontally, you need to adjust the architecture to consume events from a queue (fanout). Each server instance must listen to this queue and process the events received, distributing the load and allowing multiple nodes to maintain client connections in a coordinated manner.
 
 ## Disclaimer and Legal Implications
 
