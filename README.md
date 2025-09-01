@@ -68,7 +68,7 @@ When the server decides to rotate keys:
    - Clears `pendingPub`/`pendingSec`.
 5. **Result**: traffic resumes encrypted with the new keys and the client pin is updated.
 
-### 4. Security implications
+## Security implications
 
 * An attacker intercepting the **first connection** can supply a fake key and maintain a MitM indefinitely.
 * The pin file (`~/.ssh/g_server.hex`) is a target; if compromised or corrupted, the client may accept malicious keys or fail to connect.
@@ -140,7 +140,7 @@ curl -X POST http://localhost:8080/send-cmd \
   -d '{"command":"uptime"}'
 ```
 
-Send a file to a client:
+Push a file to a client:
 
 ```sh
 curl -X POST http://localhost:8080/send-file \
