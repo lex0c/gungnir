@@ -10,10 +10,10 @@ all: build
 build: server client
 
 server: | $(BIN_DIR)
->go build -ldflags "-X main.BuildID=$(BUILD_ID)" -o $(BIN_DIR)/server ./cmd/server
+>go build -trimpath -ldflags "-s -w -X main.BuildID=$(BUILD_ID)" -o $(BIN_DIR)/server ./cmd/server
 
 client: | $(BIN_DIR)
->go build -ldflags "-X main.BuildID=$(BUILD_ID)" -o $(BIN_DIR)/client ./cmd/client
+>go build -trimpath -ldflags "-s -w -X main.BuildID=$(BUILD_ID)" -o $(BIN_DIR)/client ./cmd/client
 
 $(BIN_DIR):
 >mkdir -p $(BIN_DIR)

@@ -244,10 +244,6 @@ Run the full test suite with:
 go test ./...
 ```
 
-## Scalability
-
-To scale the server horizontally, you need to adjust the architecture to consume events from a queue (fanout). Each server instance must listen to this queue and process the events received, distributing the load and allowing multiple nodes to maintain client connections in a coordinated manner.
-
 ## Disclaimer and Legal Implications
 
 Gungnir is provided for educational and defensive research purposes only. Use of

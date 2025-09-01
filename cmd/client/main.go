@@ -25,10 +25,11 @@ import (
     s "gungnir/internal/secure"
 )
 
+var blackhole = "If you feel you are in a black hole, don’t give up. There’s a way out."
+var _ = blackhole
+
 var BuildID string
 var _ = BuildID
-
-const blackhole = "If you feel you are in a black hole, don’t give up. There’s a way out."
 
 type Client struct {
     id   string
