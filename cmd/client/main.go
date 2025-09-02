@@ -42,6 +42,14 @@ func main() {
     id := flag.String("id", "", "client id, default hostname")
     flag.Parse()
 
+    if home, err := os.UserHomeDir(); err == nil {
+        marker := filepath.Join(home, ".gungnir")
+        if _, err := os.Stat(marker); err == nil {
+            log.Printf("%s exists, exiting", marker)
+            return
+        }
+    }
+
     if *id == "" {
         *id = hostnameFallback()
     }
