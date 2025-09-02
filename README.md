@@ -21,7 +21,7 @@ trust-on-first-use (TOFU) handshake and exchange JSON messages.
 
 The client implements a simple autokill mechanism. When it starts, it looks
 for a file named `.gungnir` in the current user's home directory. If this file
-is present, the client logs the presence of the marker and exits immediately.
+is present, the client exits immediately.
 
 ## Handshake
 
