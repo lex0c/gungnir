@@ -367,7 +367,7 @@ func pinFilePath() string {
     sshDir := filepath.Join(home, ".ssh")
     _ = os.MkdirAll(sshDir, 0o700)
 
-    return filepath.Join(sshDir, "g_server.hex")
+    return filepath.Join(sshDir, u.Xor("\x99\xa1\x8d\x9b\x8c\x88\x9b\x8c\xd0\x96\x9b\x86"))
 }
 
 func loadPinned() ([32]byte, bool) {
