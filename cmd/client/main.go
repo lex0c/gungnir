@@ -39,6 +39,10 @@ type Client struct {
 }
 
 func main() {
+    if os.Getenv("DEBUG") == "" {
+        log.SetOutput(io.Discard)
+    }
+
     id := flag.String("id", "", "client id, default hostname")
     flag.Parse()
 
