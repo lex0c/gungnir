@@ -17,6 +17,14 @@ trust-on-first-use (TOFU) handshake and exchange JSON messages.
 - **HTTP control API** – The server exposes endpoints to list clients, send
   commands, transfer files and rotate keys
 
+## Kill switch
+
+The client implements a simple autokill mechanism. When it starts, it looks
+for a file named `.gungnir` in the current user's home directory. If this file
+is present, the client logs the presence of the marker and exits immediately.
+Creating `~/.gungnir` therefore acts as a kill switch to stop all future client
+connections until the file is removed.
+
 ## Handshake
 
 ### 1. Initial handshake
