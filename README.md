@@ -200,6 +200,14 @@ curl -X POST http://localhost:8080/info \
   -d '{"client_id":"<id>"}'
 ```
 
+Ban a specific client:
+
+```sh
+curl -X POST http://localhost:8080/ban-client \
+  -H 'Content-Type: application/json' \
+  -d '{"client_id":"<id>"}'
+```
+
 Request info from all clients:
 
 ```sh
