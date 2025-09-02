@@ -173,10 +173,13 @@ func getGlobalServerKeys() (pub, sec [32]byte) {
 func handleConn(h *Hub, conn net.Conn, serverPub, serverSec [32]byte) {
     defer conn.Close()
 
+    // avoid hanging connections waiting for the first message
+    conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+
     // E2E Handshake
     sess, err := s.Server(conn, serverPub, serverSec)
     if err != nil {
-        log.Printf("handshake falhou: %v", err)
+        log.Printf("handshake fail: %v", err)
         return
     }
 
@@ -235,6 +238,9 @@ func handleConn(h *Hub, conn net.Conn, serverPub, serverSec [32]byte) {
         log.Printf("rejecting connection without register, remote=%s", conn.RemoteAddr())
         return
     }
+
+    // registration succeeded, remove deadline
+    conn.SetReadDeadline(time.Time{})
 
     c.id = first.ClientID
     if h.isBanned(c.id) {
