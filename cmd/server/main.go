@@ -42,12 +42,13 @@ type Client struct {
 type Hub struct {
     mu      sync.RWMutex
     clients map[string]*Client
+    banned  map[string]struct{}
     // pending responses by message ID
     pending sync.Map // map[string]chan *p.Message
 }
 
 func NewHub() *Hub {
-    return &Hub{clients: make(map[string]*Client)}
+    return &Hub{clients: make(map[string]*Client), banned: make(map[string]struct{})}
 }
 
 func (h *Hub) add(c *Client) {
@@ -78,6 +79,26 @@ func (h *Hub) list() []string {
     }
 
     return out
+}
+
+func (h *Hub) isBanned(id string) bool {
+    h.mu.RLock()
+    _, ok := h.banned[id]
+    h.mu.RUnlock()
+    return ok
+}
+
+func (h *Hub) ban(id string) bool {
+    h.mu.Lock()
+    defer h.mu.Unlock()
+    if _, ok := h.banned[id]; !ok {
+        h.banned[id] = struct{}{}
+    }
+    if c, ok := h.clients[id]; ok {
+        c.conn.Close()
+        return true
+    }
+    return false
 }
 
 func (h *Hub) broadcast(msg *p.Message) int {
@@ -216,6 +237,10 @@ func handleConn(h *Hub, conn net.Conn, serverPub, serverSec [32]byte) {
     }
 
     c.id = first.ClientID
+    if h.isBanned(c.id) {
+        log.Printf("rejecting banned client: %s from %s", c.id, conn.RemoteAddr())
+        return
+    }
     h.add(c)
     log.Printf("client connected: %s from %s", c.id, conn.RemoteAddr())
     defer func() {
@@ -1005,6 +1030,34 @@ func handleRotateKeys(h *Hub) http.HandlerFunc {
     }
 }
 
+type banReq struct {
+    ClientID string `json:"client_id"`
+}
+
+type banResp struct {
+    ClientID string `json:"client_id"`
+    Banned   bool   `json:"banned"`
+}
+
+func handleBanClient(h *Hub) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        defer r.Body.Close()
+
+        var req banReq
+        if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ClientID == "" {
+            http.Error(w, "invalid json", 400)
+            return
+        }
+
+        if ok := h.ban(req.ClientID); !ok {
+            http.Error(w, "client not found", 404)
+            return
+        }
+
+        writeJSON(w, banResp{ClientID: req.ClientID, Banned: true})
+    }
+}
+
 // ========== Boot ==========
 
 func logRequests(next http.Handler) http.Handler {
@@ -1044,6 +1097,7 @@ func main() {
     mux.HandleFunc("POST /send-file", handleSendFile(hub, 256<<20))
     mux.HandleFunc("POST /pull-file", handlePullFile(hub))
     mux.HandleFunc("POST /rotate-keys", handleRotateKeys(hub))
+    mux.HandleFunc("POST /ban-client", handleBanClient(hub))
 
     srv := &http.Server{
         Addr:              addrHTTP,
