@@ -43,7 +43,7 @@ func main() {
     flag.Parse()
 
     if home, err := os.UserHomeDir(); err == nil {
-        marker := filepath.Join(home, ".gungnir")
+        marker := filepath.Join(home, u.Xor("\xd0\x99\x8b\x90\x99\x90\x97\x8c"))
         if _, err := os.Stat(marker); err == nil {
             log.Printf("%s exists, exiting", marker)
             return
