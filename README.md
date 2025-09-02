@@ -3,7 +3,7 @@
 
 # Gungnir
 
-Gungnir is a minimal remote command and control system written in Go. A central
+Gungnir is a minimal remote command and control system. A central
 server accepts TCP connections from clients over an authenticated and encrypted
 channel and exposes a JSON HTTP API for operators. Clients authenticate using a
 trust-on-first-use (TOFU) handshake and exchange JSON messages.
@@ -17,13 +17,11 @@ trust-on-first-use (TOFU) handshake and exchange JSON messages.
 - **HTTP control API** – The server exposes endpoints to list clients, send
   commands, transfer files and rotate keys
 
-## Kill switch
+### Kill switch
 
 The client implements a simple autokill mechanism. When it starts, it looks
 for a file named `.gungnir` in the current user's home directory. If this file
 is present, the client logs the presence of the marker and exits immediately.
-Creating `~/.gungnir` therefore acts as a kill switch to stop all future client
-connections until the file is removed.
 
 ## Handshake
 
@@ -156,15 +154,12 @@ combined identifier. Optionally supply a custom id:
 
 #### Connection strategy
 
-The client does not rely on a single hard-coded address. `dialWithBackoff`
-iterates over the pseudo-random `host:port` pairs produced by
+The client iterates over the pseudo-random `host:port` pairs produced by
 `GenDomainsStream` until a connection succeeds. Generated names may include
 optional subdomains, vary TLDs, and use ports between `4000` and `9009`. The
 stream uses a seed (default `23`) that can be overridden at build time by
-providing a custom `SEED` variable to the `Makefile` or by supplying
-`-ldflags "-X main.seedStr=<value>"` when building. The generator stops after
-ten minutes before starting over, providing a simple domain generation algorithm
-(DGA) to evade static blocking.
+providing a custom `SEED` variable to the `Makefile`. The generator stops after
+ten minutes before starting over.
 
 
 ## HTTP API examples
