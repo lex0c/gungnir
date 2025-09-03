@@ -1,2 +1,5 @@
 testdata/
 bin/
+__pycache__
+*.pem
+
