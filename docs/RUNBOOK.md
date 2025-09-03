@@ -94,6 +94,23 @@ sudo nmap -sS -p- 127.0.0.1
 sudo ss -antup
 sudo lsof -p <PID>
 nc -vz <HOST> <PORT>
+
+readelf -h bin/client
+objdump -x bin/client
+ldd bin/client
+strings -a bin/client | less
+objdump -d bin/client | less
+strace -f -o trace.log bin/client
+ltrace -f -o ltrace.log bin/client
+sudo sysdig proc.name=client
+gdb bin/client
+
+sudo tcpdump -i any -w sample.pcap
+sudo inotifywait -r /tmp /var /home -m
+
+
+
+
 ```
 
 
