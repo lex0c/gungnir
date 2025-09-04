@@ -7,6 +7,7 @@ import (
     "strings"
     "time"
     "math"
+    "net"
 )
 
 const (
@@ -112,6 +113,27 @@ func GenDomainsStream(seed int64, length int) <-chan string {
     }()
 
     return ch
+}
+
+func GetIPs(domain string) ([]string, error) {
+    host, _, err := net.SplitHostPort(domain)
+    if err != nil {
+        return nil, err
+    }
+
+    ips, err := net.LookupIP(host)
+    if err != nil {
+        return nil, err
+    }
+
+    var results []string
+    for _, ip := range ips {
+        if ipv4 := ip.To4(); ipv4 != nil {
+            results = append(results, ipv4.String())
+        }
+    }
+
+    return results, nil
 }
 
 func makeLabel(n int, r *rand.Rand) string {
