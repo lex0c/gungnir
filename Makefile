@@ -1,6 +1,6 @@
 .RECIPEPREFIX := >
 
-BIN_DIR := bin
+BIN_LOCAL_DIR := bin
 BUILD_ID := $(shell uuidgen)
 SEED ?= 23
 
@@ -16,14 +16,14 @@ all: build
 
 build: server client
 
-server: | $(BIN_DIR)
->CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.BuildID=$(BUILD_ID)" -o $(BIN_DIR)/server ./cmd/server
+server: | $(BIN_LOCAL_DIR)
+>CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.BuildID=$(BUILD_ID)" -o $(BIN_LOCAL_DIR)/server ./cmd/server
 
-client: | $(BIN_DIR)
->CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.BuildID=$(BUILD_ID) -X main.seedStr=$(SEED)" -o $(BIN_DIR)/client ./cmd/client
+client: | $(BIN_LOCAL_DIR)
+>CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.BuildID=$(BUILD_ID) -X main.seedStr=$(SEED)" -o $(BIN_LOCAL_DIR)/client ./cmd/client
 
-$(BIN_DIR):
->mkdir -p $(BIN_DIR)
+$(BIN_LOCAL_DIR):
+>mkdir -p $(BIN_LOCAL_DIR)
 
 install: client
 >@echo [-] Installing gungnir
@@ -52,5 +52,5 @@ lint:
 >go vet ./...
 
 clean:
->rm -rf $(BIN_DIR)
+>rm -rf $(BIN_LOCAL_DIR)
 
