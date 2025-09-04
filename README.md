@@ -154,13 +154,17 @@ combined identifier. Optionally supply a custom id:
 
 #### Connection strategy
 
+By default the client uses a domain generation algorithm to find the server
+address. You can override this behavior by supplying an explicit host and port
+with the `-addr` flag, for example `gungnir -addr 127.0.0.1:9000`.
+
+**Domain generation algorithm**:
 The client iterates over the pseudo-random `host:port` pairs produced by
 `GenDomainsStream` until a connection succeeds. Generated names may include
 optional subdomains, vary TLDs, and use ports between `4000` and `9009`. The
 stream uses a seed (default `23`) that can be overridden at build time by
 providing a custom `SEED` variable to the `Makefile`. The generator stops after
 ten minutes before starting over.
-
 
 ## HTTP API examples
 
