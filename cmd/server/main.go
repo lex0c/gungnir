@@ -1,6 +1,7 @@
 package main
 
 import (
+    "context"
     "crypto/rand"
     "encoding/hex"
     "encoding/json"
@@ -977,6 +978,35 @@ func adjustDstForClient(dst, src, cid string) string {
     return filepath.Join(dir, fmt.Sprintf("%s.%s%s", name, cid, ext))
 }
 
+type genDomainsReq struct {
+    Seed   int64 `json:"seed"`
+    Length int   `json:"length"`
+    Total  int   `json:"total"`
+}
+
+func handleGenDomains() http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        defer r.Body.Close()
+
+        var req genDomainsReq
+        if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Total <= 0 {
+            http.Error(w, "invalid json", 400)
+            return
+        }
+
+        ctx, cancel := context.WithCancel(r.Context())
+        defer cancel()
+
+        ch := u.GenDomainsStreamCtx(ctx, req.Seed, req.Length)
+        out := make([]string, 0, req.Total)
+        for i := 0; i < req.Total; i++ {
+            out = append(out, <-ch)
+        }
+
+        writeJSON(w, out)
+    }
+}
+
 func handleListClients(h *Hub) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
         writeJSON(w, h.list())
@@ -1096,6 +1126,7 @@ func main() {
     go tcpListen(hub, addrTCP)
 
     mux := http.NewServeMux()
+    mux.HandleFunc("POST /gen-domains", handleGenDomains())
     mux.HandleFunc("GET /clients", handleListClients(hub))
     mux.HandleFunc("POST /ping", handlePing(hub))
     mux.HandleFunc("POST /info", handleInfo(hub))

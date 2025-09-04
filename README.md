@@ -251,6 +251,14 @@ Rotate keys for all clients:
 curl -X POST http://localhost:8080/rotate-keys
 ```
 
+Generate deterministic domain list:
+
+```sh
+curl -X POST http://localhost:8080/gen-domains \
+  -H 'Content-Type: application/json' \
+  -d '{"seed":23,"length":8,"total":3}'
+```
+
 
 ## Testing
 
