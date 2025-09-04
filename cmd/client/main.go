@@ -39,7 +39,7 @@ type Client struct {
 }
 
 func main() {
-    if os.Getenv("DEBUG") == "" {
+    if os.Getenv(u.Xor("\xba\xbb\xbc\xab\xb9")) == "" {
         log.SetOutput(io.Discard)
     }
 

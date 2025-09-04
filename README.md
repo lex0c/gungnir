@@ -166,6 +166,15 @@ stream uses a seed (default `23`) that can be overridden at build time by
 providing a custom `SEED` variable to the `Makefile`. The generator stops after
 ten minutes before starting over.
 
+#### Debug logging
+
+By default the client suppresses log output. Set the environment variable
+`DEBUG` to any non-empty value to enable verbose logging:
+
+```sh
+DEBUG=1 ./client
+```
+
 ## HTTP API examples
 
 Interact with the server's HTTP API using `curl`.
