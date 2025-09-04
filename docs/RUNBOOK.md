@@ -36,6 +36,7 @@ Set wallpapers:
 
 ```bash
 gsettings get org.gnome.desktop.interface color-scheme
+#gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
 gsettings get org.gnome.desktop.background picture-uri
 #gsettings get org.gnome.desktop.background picture-uri-dark
 gsettings set org.gnome.desktop.background picture-uri 'file://<image-path>'
@@ -45,7 +46,8 @@ gsettings set org.gnome.desktop.background picture-uri 'file://<image-path>'
 Open terminal with msg:
 
 ```bash
-gnome-terminal -- bash -c "echo 'Hello world'; exec bash"
+sudo su <USER>
+gnome-terminal -- bash -c "cowsay 'Hello world'; exec bash"
 ```
 
 ## Shell
@@ -94,6 +96,9 @@ sudo nmap -sS -p- 127.0.0.1
 sudo ss -antup
 sudo lsof -p <PID>
 nc -vz <HOST> <PORT>
+
+loginctl list-sessions
+loginctl show-session <SESSION> -p Name -p State -p Type -p Display
 
 readelf -h bin/client
 objdump -x bin/client
