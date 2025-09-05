@@ -157,7 +157,7 @@ combined identifier. Optionally supply a custom id:
 
 By default the client uses a domain generation algorithm to find the server
 address. You can override this behavior by supplying an explicit host and port
-with the `-addr` flag, for example `gungnir -addr 127.0.0.1:9000`.
+with the `-addr` flag, for example `./bin/client -addr 127.0.0.1:9000`.
 
 **Domain generation algorithm**:
 The client iterates over the pseudo-random `host:port` pairs produced by
@@ -173,7 +173,7 @@ By default the client suppresses log output. Set the environment variable
 `DEBUG` to any non-empty value to enable verbose logging:
 
 ```sh
-DEBUG=1 ./client
+DEBUG=1 ./bin/client
 ```
 
 ## HTTP API examples
