@@ -113,7 +113,8 @@ gdb bin/client
 sudo tcpdump -i any -w sample.pcap
 sudo inotifywait -r /tmp /var /home -m
 
-
+sha256sum bin/client
+md5sum bin/client
 
 
 ```
