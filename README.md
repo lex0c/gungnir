@@ -3,7 +3,7 @@
 
 # Gungnir
 
-Gungnir is a minimal remote command and control system. A central
+Gungnir is a minimal command and control system. A central
 server accepts TCP connections from clients over an authenticated and encrypted
 channel and exposes a JSON HTTP API for operators. Clients authenticate using a
 trust-on-first-use (TOFU) handshake and exchange JSON messages.
@@ -112,7 +112,8 @@ When the server decides to rotate keys:
 * The pin file (`~/.ssh/g_server.hex`) is a target; if compromised or corrupted, the client may accept malicious keys or fail to connect.
 * Lack of forward secrecy between resets means that if the shared key is exposed, previously captured traffic can be decrypted.
 * Nonce reuse or counter failures can break the confidentiality provided by AEAD.
-* Clients blindly trust any reachable server. Each build injects a random BuildID into the server and client binaries, and the client only proceeds if the server presents the same ID. This prevents accidental mismatches, yet if an attacker alters the BuildID embedded in the client it can still be hijacked by a rogue server.
+* Clients blindly trust any server they can reach. To reduce mismatches, each build embeds a random BuildID in both server and client binaries, and the client proceeds only if the server presents the same ID. If someone extracts or tampers with the BuildID, they can operate a rogue server that the client will accept as legitimate.
+* Maintaining a persistent open connection is relatively easy to detect.
 
 ## Building
 
