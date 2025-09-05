@@ -113,6 +113,7 @@ When the server decides to rotate keys:
 * Lack of forward secrecy between resets means that if the shared key is exposed, previously captured traffic can be decrypted.
 * Nonce reuse or counter failures can break the confidentiality provided by AEAD.
 * Clients blindly trust any server they can reach. To reduce mismatches, each build embeds a random BuildID in both server and client binaries, and the client proceeds only if the server presents the same ID. If someone extracts or tampers with the BuildID, they can operate a rogue server that the client will accept as legitimate.
+* The protocol is vulnerable to traffic analysis; frame sizes and message timing still leak metadata because there is no padding or cover traffic.
 * Maintaining a persistent open connection is relatively easy to detect.
 
 ## Building
